@@ -1,0 +1,24 @@
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.py$'
+exclude = '''
+/(
+  | \.git
+)/
+'''
+
+[tool.poetry]
+name = "fourier"
+version = "0.0.0"
+description = ""
+authors = ["Antoni Maciag <antoni.maciag1@gmail.com>"]
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "~3.11"
+
+scipy = "*"
+scikit-image = "*"
+matplotlib = "*"
