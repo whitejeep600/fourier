@@ -15,16 +15,19 @@ from tqdm import tqdm
 # Todo after adding the sound, adjust this to obtain an animation
 #  that visually corresponds to the sound (hopefully an adjustment
 #  here will be sufficient)
+# todo maybe make the moving average move faster for "faster" fragments
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. We'll only render this many video frames
-FRAME_CUTOFF = 512
+FRAME_CUTOFF = 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
 GREEN_AXIS = 1
 RED_AXIS = 2
+
+# todo add image size as a constant and make it possible to properly modify
 
 
 def moving_average(a: np.ndarray, length: int) -> np.ndarray:
@@ -51,15 +54,13 @@ def write_circle(
     a[total_distance == radius] = value
 
 
-# todo maybe decrease the lightness of the whole frame if the volume goes down
-#  or make the moving average move faster for "faster" fragments
-
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
 # todo add some other processing.
 #  Whatever makes it look cool, yo. We can experiment
 def visualize_amplitudes(
-        amplitudes: np.ndarray
+        amplitudes: np.ndarray,
+        global_max_amplitude: float
 ) -> np.ndarray:
     # The main idea behind this visualization is as follows.
     # We get a 1-dimensional array of frequency amplitudes,
@@ -82,21 +83,39 @@ def visualize_amplitudes(
     img_size = (len(amplitudes) - 1) * 2
     power_image = np.zeros((img_size, img_size))
 
-    # Processing that empirically works okay
+    # todo might want to modify this for the best, most dynamic
+    #  visual effect
+    local_max_amplitude = amplitudes.max()
+    brightness_scaling = local_max_amplitude / global_max_amplitude
+
+    # Processing that empirically works okay, not really
+    # motivated by any kind of maths
     amplitudes = np.log(amplitudes)
     amplitudes -= amplitudes.min()
     amplitudes = amplitudes * 255
 
-    # try to make this faster maybe, every frame takes
-    # 1/6th of a second to render, that's a bit much
+    # todo try to make this faster maybe, every frame takes
+    #  1/6th of a second to render, that's a bit much
     for j in range(len(amplitudes)):
         write_circle(power_image, amplitudes[j], j)
     transformed = abs(np.fft.ifft2(power_image))
 
-    # ditto
+    # Again, empirically works to produce cool images
+    transformed -= transformed.min()
     transformed = np.log(transformed)
+
     transformed *= 255 / transformed.max()
+
+    # This transformation is not the most elegant ever,
+    # mathematically. Buut it introduces some element
+    # of chaos that works nicely on the resulting patterns,
+    # making them more volatile and likely to create sharp
+    # changes in brightness.
+    transformed -= (transformed // 256) * 256
     transformed = np.repeat(transformed[:, :, None], 3, axis=2)
+
+    transformed *= brightness_scaling
+
     transformed = transformed.astype(np.uint8)
     return transformed
 
@@ -115,8 +134,10 @@ def save_amplitude_data_visualization_as_avi(
         isColor=True
     )
 
+    max_amplitude = amplitudes.max()
+
     for frame_amplitudes in tqdm(amplitudes[:FRAME_CUTOFF]):
-        amplitudes_visualization = visualize_amplitudes(frame_amplitudes)
+        amplitudes_visualization = visualize_amplitudes(frame_amplitudes, max_amplitude)
 
         # Adding a single frame to the video
         video.write(amplitudes_visualization)
