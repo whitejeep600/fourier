@@ -1,15 +1,13 @@
 import multiprocessing
-import os
 from functools import partial
 from pathlib import Path
 
-import cv2
 import numpy as np
 import scipy
 from moviepy.audio.AudioClip import CompositeAudioClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 
-from moviepy.video.io.VideoFileClip import VideoFileClip
 from scipy.io import wavfile
 from tqdm import tqdm
 
@@ -24,7 +22,7 @@ AVERAGING_WINDOW_LEN = 256
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 4 * 1024
+FRAME_CUTOFF: int | None = 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -143,18 +141,12 @@ def visualize_amplitudes(
     return transformed
 
 
-def save_amplitude_data_visualization_as_avi(
+def save_amplitude_data_visualization(
         amplitudes: np.ndarray,
         target_path: Path,
-        target_video_fps: float
+        target_video_fps: float,
+        original_audio_path: Path
 ) -> None:
-    video = cv2.VideoWriter(
-        str(target_path),
-        cv2.VideoWriter_fourcc(*'MJPG'),
-        fps=target_video_fps,
-        frameSize=(IMG_SIZE, IMG_SIZE),
-        isColor=True
-    )
 
     if FRAME_CUTOFF is not None:
         amplitudes = amplitudes[:FRAME_CUTOFF]
@@ -168,49 +160,30 @@ def save_amplitude_data_visualization_as_avi(
 
     pool = multiprocessing.Pool(N_PROCESSES)
 
-    for amplitudes_visualization in tqdm(
+    amplitude_visualizations = []
+    for amplitude_visualization in tqdm(
             pool.imap(visualize_amplitudes_partial, amplitudes),
             desc="Creating video frames...",
             total=len(amplitudes)
     ):
+        amplitude_visualizations.append(amplitude_visualization)
 
-        # Adding a single frame to the video
-        video.write(amplitudes_visualization)
+    video_clip = ImageSequenceClip(amplitude_visualizations, target_video_fps)
 
-    cv2.destroyAllWindows()
-    video.release()
-
-
-def resave_with_target_fps_and_sound(
-        temp_video_path: Path,
-        target_video_path: Path,
-        target_video_fps: float,
-        audio_path: Path
-) -> None:
-
-    # again, debug only
-    audio_clip = AudioFileClip(str(audio_path))
-
+    audio_clip = AudioFileClip(str(original_audio_path))
     if FRAME_CUTOFF is not None:
         target_len_seconds = FRAME_CUTOFF / target_video_fps
         audio_clip = audio_clip.subclip(0, target_len_seconds)
 
     composite_audio_clip = CompositeAudioClip([audio_clip])
-
-    video_clip = VideoFileClip(str(temp_video_path))
     video_clip.audio = composite_audio_clip
-    video_clip.write_videofile(str(target_video_path), fps=target_video_fps)
-    os.system(f"rm {temp_video_path}")
+    video_clip.write_videofile(str(target_path), fps=target_video_fps)
 
 
 def main():
     audio_path = Path("data/audio/source.wav")
     target_mp4_path = Path("data/video/final.mp4")
     target_mp4_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Saving video it as avi first, then loading and saving as mp4
-    # with audio. I don't think CV2 makes it possible to add audio.
-    temp_video_path = Path("temp.avi")
 
     samplerate, stereo_signal = wavfile.read(audio_path)
     mono_signal = stereo_signal.mean(axis=1)
@@ -238,8 +211,9 @@ def main():
     # average.
     all_amplitudes = moving_average(all_amplitudes, AVERAGING_WINDOW_LEN)
 
-    save_amplitude_data_visualization_as_avi(all_amplitudes, temp_video_path, target_video_fps)
-    resave_with_target_fps_and_sound(temp_video_path, target_mp4_path, target_video_fps, audio_path)
+    save_amplitude_data_visualization(
+        all_amplitudes, target_mp4_path, target_video_fps, audio_path
+    )
 
 
 if __name__ == '__main__':
