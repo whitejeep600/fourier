@@ -4,6 +4,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import scipy
+from moviepy.audio.AudioClip import CompositeAudioClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
 
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from scipy.io import wavfile
@@ -14,6 +16,10 @@ from tqdm import tqdm
 #  that visually corresponds to the sound (hopefully an adjustment
 #  here will be sufficient)
 AVERAGING_WINDOW_LEN = 256
+
+# This is only for debugging, because calculating all the stuff
+# takes a lot of time.
+FRAME_CUTOFF = 1024
 
 
 def moving_average(a: np.ndarray, length: int) -> np.ndarray:
@@ -39,6 +45,9 @@ def write_circle(
     ).astype(int)
     a[total_distance == radius] = value
 
+
+# todo maybe decrease the lightness of the whole frame if the volume goes down
+#  or make the moving average move faster for "faster" fragments
 
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
@@ -73,6 +82,8 @@ def visualize_amplitudes(
     amplitudes -= amplitudes.min()
     amplitudes = amplitudes * 255
 
+    # try to make this faster maybe, every frame takes
+    # 1/6th of a second to render, that's a bit much
     for j in range(len(amplitudes)):
         write_circle(power_image, amplitudes[j], j)
     transformed = abs(np.fft.ifft2(power_image))
@@ -90,21 +101,18 @@ def visualize_amplitudes(
 def save_amplitude_data_visualization_as_avi(
         amplitudes: np.ndarray,
         target_path: Path,
-        target_video_fps: float  # as explained below, this will be ignored by cv2 anyway
+        target_video_fps: float
 ) -> None:
     img_size = ((amplitudes.shape[1]) - 1) * 2
     video = cv2.VideoWriter(
         str(target_path),
-        cv2.VideoWriter_fourcc(*'MPEG'),
-        target_video_fps,
-        (img_size, img_size),
-        False
+        cv2.VideoWriter_fourcc(*'MJPG'),
+        fps=target_video_fps,
+        frameSize=(img_size, img_size),
+        isColor=False
     )
 
-    # This is only for debugging, because calculating all the stuff
-    # takes a lot of time.
-    frame_cutoff = 256
-    for frame_amplitudes in tqdm(amplitudes[:frame_cutoff]):
+    for frame_amplitudes in tqdm(amplitudes[:FRAME_CUTOFF]):
         amplitudes_visualization = visualize_amplitudes(frame_amplitudes)
 
         # Adding a single frame to the video
@@ -114,14 +122,21 @@ def save_amplitude_data_visualization_as_avi(
     video.release()
 
 
-# todo add the original sound again, I couldn't get
-#  those libraries to work
-def resave_with_target_fps(
+def resave_with_target_fps_and_sound(
         temp_video_path: Path,
         target_video_path: Path,
-        target_video_fps: float
+        target_video_fps: float,
+        audio_path: Path
 ) -> None:
+
+    # again, debug
+    target_len_seconds = FRAME_CUTOFF / target_video_fps
+
+    audioclip = AudioFileClip(str(audio_path)).subclip(0, target_len_seconds)
+    new_audioclip = CompositeAudioClip([audioclip])
+
     video_clip = VideoFileClip(str(temp_video_path))
+    video_clip.audio = new_audioclip
     video_clip.write_videofile(str(target_video_path), fps=target_video_fps)
     os.system(f"rm {temp_video_path}")
 
@@ -131,9 +146,8 @@ def main():
     target_mp4_path = Path("data/video/final.mp4")
     target_mp4_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Saving it as avi first, then loading and saving as mp4.
-    # Why? Because cv2 kindly ignores the target_video_fps
-    # parameter, so we use another library to correct that.
+    # Saving video it as avi first, then loading and saving as mp4
+    # with audio. I don't think CV2 makes it possible to add audio.
     temp_video_path = Path("temp.avi")
 
     samplerate, stereo_signal = wavfile.read(audio_path)
@@ -163,7 +177,7 @@ def main():
     all_amplitudes = moving_average(all_amplitudes, AVERAGING_WINDOW_LEN)
 
     save_amplitude_data_visualization_as_avi(all_amplitudes, temp_video_path, target_video_fps)
-    resave_with_target_fps(temp_video_path, target_mp4_path, target_video_fps)
+    resave_with_target_fps_and_sound(temp_video_path, target_mp4_path, target_video_fps, audio_path)
 
 
 if __name__ == '__main__':
