@@ -18,8 +18,13 @@ from tqdm import tqdm
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
-# takes a lot of time.
-FRAME_CUTOFF = 1024
+# takes a lot of time. We'll only render this many video frames
+FRAME_CUTOFF = 512
+
+# Working on BGR video data
+BLUE_AXIS = 0
+GREEN_AXIS = 1
+RED_AXIS = 2
 
 
 def moving_average(a: np.ndarray, length: int) -> np.ndarray:
@@ -51,7 +56,7 @@ def write_circle(
 
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
-# todo add colors and maybe some other processing.
+# todo add some other processing.
 #  Whatever makes it look cool, yo. We can experiment
 def visualize_amplitudes(
         amplitudes: np.ndarray
@@ -91,9 +96,7 @@ def visualize_amplitudes(
     # ditto
     transformed = np.log(transformed)
     transformed *= 255 / transformed.max()
-    # todo this doesn't work, cv2 refuses to save in color properly
-    #  (saves but then error on read)
-    # transformed = np.repeat(transformed[:, :, None], 3, axis=2)
+    transformed = np.repeat(transformed[:, :, None], 3, axis=2)
     transformed = transformed.astype(np.uint8)
     return transformed
 
@@ -109,7 +112,7 @@ def save_amplitude_data_visualization_as_avi(
         cv2.VideoWriter_fourcc(*'MJPG'),
         fps=target_video_fps,
         frameSize=(img_size, img_size),
-        isColor=False
+        isColor=True
     )
 
     for frame_amplitudes in tqdm(amplitudes[:FRAME_CUTOFF]):
