@@ -19,8 +19,9 @@ from tqdm import tqdm
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
-# takes a lot of time. We'll only render this many video frames
-FRAME_CUTOFF = 1024
+# takes a lot of time. If this is not None, it determines how many
+# # video frames will be rendered.
+FRAME_CUTOFF: int | None = 256
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -148,7 +149,10 @@ def save_amplitude_data_visualization_as_avi(
 
     max_amplitude = amplitudes.max()
 
-    for frame_amplitudes in tqdm(amplitudes[:FRAME_CUTOFF]):
+    if FRAME_CUTOFF is not None:
+        amplitudes = amplitudes[:FRAME_CUTOFF]
+
+    for frame_amplitudes in tqdm(amplitudes):
         amplitudes_visualization = visualize_amplitudes(frame_amplitudes, max_amplitude)
 
         # Adding a single frame to the video
@@ -166,13 +170,16 @@ def resave_with_target_fps_and_sound(
 ) -> None:
 
     # again, debug only
-    target_len_seconds = FRAME_CUTOFF / target_video_fps
+    audio_clip = AudioFileClip(str(audio_path))
 
-    audioclip = AudioFileClip(str(audio_path)).subclip(0, target_len_seconds)
-    new_audioclip = CompositeAudioClip([audioclip])
+    if FRAME_CUTOFF is not None:
+        target_len_seconds = FRAME_CUTOFF / target_video_fps
+        audio_clip = audio_clip.subclip(0, target_len_seconds)
+
+    composite_audio_clip = CompositeAudioClip([audio_clip])
 
     video_clip = VideoFileClip(str(temp_video_path))
-    video_clip.audio = new_audioclip
+    video_clip.audio = composite_audio_clip
     video_clip.write_videofile(str(target_video_path), fps=target_video_fps)
     os.system(f"rm {temp_video_path}")
 
