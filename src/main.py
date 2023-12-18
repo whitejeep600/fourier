@@ -1,4 +1,6 @@
+import multiprocessing
 import os
+from functools import partial
 from pathlib import Path
 
 import cv2
@@ -11,20 +13,18 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from scipy.io import wavfile
 from tqdm import tqdm
 
+N_PROCESSES = 6
 
-# todo try to improve processing speed, e.g. parallelize
-
-
-# Todo after adding the sound, adjust this to obtain an animation
-#  that visually corresponds to the sound (hopefully an adjustment
-#  here will be sufficient)
+# Todo adjust this to obtain an animation
+#  that visually corresponds to the sound (hopefully
+#  an adjustment here will be sufficient)
 # todo maybe make the moving average move faster for "faster" fragments
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 1024
+FRAME_CUTOFF: int | None = 4 * 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -32,8 +32,9 @@ GREEN_AXIS = 1
 RED_AXIS = 2
 
 # todo experiment with this, higher is probably prettier but
-#  ofc more expensive computationally
-IMG_SIZE = 256
+#  ofc more expensive computationally. At least 512 for final
+#  rendering
+IMG_SIZE = 512
 
 
 def moving_average(a: np.ndarray, length: int) -> np.ndarray:
@@ -44,7 +45,7 @@ def moving_average(a: np.ndarray, length: int) -> np.ndarray:
 
 def get_int_distances_from_array_center(
         array_size: int
-):
+) -> np.ndarray:
     center = array_size // 2
     one_dim_distance = np.abs(np.arange(array_size) - center)
     total_distance = (
@@ -55,6 +56,11 @@ def get_int_distances_from_array_center(
 
 DISTANCES_FROM_IMG_CENTER = get_int_distances_from_array_center(IMG_SIZE)
 
+DISTANCE_MASKS = [
+    DISTANCES_FROM_IMG_CENTER == radius
+    for radius in range(IMG_SIZE // 2 + 1)
+]
+
 
 # Writes a constant value in an array, approximately on a circle
 # with the same center as the array, and a given radius.
@@ -63,7 +69,7 @@ def write_circle(
         value: float,
         radius: int
 ) -> None:
-    a[DISTANCES_FROM_IMG_CENTER == radius] = value
+    a[DISTANCE_MASKS[radius]] = value
 
 
 # Return an uint8 array representing BGR data of the visualization.
@@ -83,7 +89,7 @@ def write_circle(
 #      as the third dimension. Objectively coolest but maybe 太麻煩
 def visualize_amplitudes(
         amplitudes: np.ndarray,
-        global_max_amplitude: float
+        global_max_amplitude_sum: float
 ) -> np.ndarray:
     # The main idea behind this visualization is as follows.
     # We get a 1-dimensional array of frequency amplitudes,
@@ -97,7 +103,7 @@ def visualize_amplitudes(
     # 1-dimensional amplitude data. We have chosen to
     # map increasing frequencies to circles of increasing
     # radii on the image, centered in the center of the image.
-    # On these circles, we assign a greyscale value
+    # On each of those circles, we assign a greyscale value
     # proportional to the given amplitude.
     # This is kinda intuitive because on PSDs, higher
     # frequencies are in fact further away from the center,
@@ -107,14 +113,18 @@ def visualize_amplitudes(
 
     # todo might want to modify this for the best, most dynamic
     #  visual effect
-    local_max_amplitude = amplitudes.max()
-    brightness_scaling = local_max_amplitude / global_max_amplitude
+    local_amplitude_sum = amplitudes.sum()
+    brightness_scaling = local_amplitude_sum / global_max_amplitude_sum
 
     # Processing that empirically works okay, not really
     # motivated by any kind of maths
     amplitudes = np.log(amplitudes)
     amplitudes -= amplitudes.min()
     amplitudes = amplitudes * 255
+
+    # These dimensions are sensible; remove this assertion
+    # if support for different ones is added
+    assert (len(amplitudes) - 1) * 2 == IMG_SIZE
 
     for j in range(len(amplitudes)):
         write_circle(power_image, amplitudes[j], j)
@@ -132,11 +142,10 @@ def visualize_amplitudes(
     # making them more volatile and likely to create sharp
     # changes in brightness.
     transformed -= (transformed // 256) * 256
-    transformed = np.repeat(transformed[:, :, None], 3, axis=2)
-
     transformed *= brightness_scaling
-
     transformed = transformed.astype(np.uint8)
+
+    transformed = np.repeat(transformed[:, :, None], 3, axis=2)
     return transformed
 
 
@@ -153,13 +162,23 @@ def save_amplitude_data_visualization_as_avi(
         isColor=True
     )
 
-    max_amplitude = amplitudes.max()
-
     if FRAME_CUTOFF is not None:
         amplitudes = amplitudes[:FRAME_CUTOFF]
 
-    for frame_amplitudes in tqdm(amplitudes):
-        amplitudes_visualization = visualize_amplitudes(frame_amplitudes, max_amplitude)
+    max_sum_amplitude = max([frame_amplitudes.sum() for frame_amplitudes in amplitudes])
+
+    visualize_amplitudes_partial = partial(
+        visualize_amplitudes,
+        global_max_amplitude_sum=max_sum_amplitude
+    )
+
+    pool = multiprocessing.Pool(N_PROCESSES)
+
+    for amplitudes_visualization in tqdm(
+            pool.imap(visualize_amplitudes_partial, amplitudes),
+            desc="Creating video frames...",
+            total=len(amplitudes)
+    ):
 
         # Adding a single frame to the video
         video.write(amplitudes_visualization)
