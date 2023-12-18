@@ -77,14 +77,6 @@ def write_circle(
 # todo add some other processing.
 #  Whatever makes it look cool, yo. We can experiment
 #  color ideas:
-#    wavelength. Map shorter sound wavelengths to shorter
-#      light wavelengths. Thus bass = low frequencies =
-#      high wavelengths and maps to red, then mid maps to green,
-#      then high maps to blue. That would be "discrete", could instead
-#      do it continuously, like assign continuously changing colors
-#      to circles further and further away from the center in the PSD
-#      then some kind of color changing on the result, weighted by
-#      images of the circles. Computationally expensive tho
 #    dimensions. come up with a method of a 3d ft with colors
 #      as the third dimension. Objectively coolest but maybe 太麻煩
 def visualize_amplitudes(
@@ -141,6 +133,8 @@ def visualize_amplitudes(
     # of chaos that works nicely on the resulting patterns,
     # making them more volatile and likely to create sharp
     # changes in brightness.
+    # todo maybe add colors here? like very high values will
+    #  be cut off, but we can still reflect them in the color
     transformed -= (transformed // 256) * 256
     transformed *= brightness_scaling
     transformed = transformed.astype(np.uint8)
