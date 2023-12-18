@@ -12,6 +12,9 @@ from scipy.io import wavfile
 from tqdm import tqdm
 
 
+# todo try to improve processing speed, e.g. parallelize
+
+
 # Todo after adding the sound, adjust this to obtain an animation
 #  that visually corresponds to the sound (hopefully an adjustment
 #  here will be sufficient)
@@ -21,7 +24,7 @@ AVERAGING_WINDOW_LEN = 256
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 256
+FRAME_CUTOFF: int | None = 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -39,22 +42,28 @@ def moving_average(a: np.ndarray, length: int) -> np.ndarray:
     return cumsums[length - 1:, :] / length
 
 
+def get_int_distances_from_array_center(
+        array_size: int
+):
+    center = array_size // 2
+    one_dim_distance = np.abs(np.arange(array_size) - center)
+    total_distance = (
+            (one_dim_distance[None, :] ** 2 + one_dim_distance[:, None] ** 2) ** (1 / 2)
+    ).astype(int)
+    return total_distance
+
+
+DISTANCES_FROM_IMG_CENTER = get_int_distances_from_array_center(IMG_SIZE)
+
+
 # Writes a constant value in an array, approximately on a circle
-# with the same center as the array and a given radius.
+# with the same center as the array, and a given radius.
 def write_circle(
         a: np.ndarray,
         value: float,
         radius: int
 ) -> None:
-    h, w = a.shape
-    assert h == w, "This function is meant for square arrays. Shame on you"
-    size = h
-    center = size // 2
-    one_dim_distance = np.abs(np.arange(size) - center)
-    total_distance = (
-            (one_dim_distance[None, :] ** 2 + one_dim_distance[:, None] ** 2) ** (1/2)
-    ).astype(int)
-    a[total_distance == radius] = value
+    a[DISTANCES_FROM_IMG_CENTER == radius] = value
 
 
 # Return an uint8 array representing BGR data of the visualization.
@@ -107,9 +116,6 @@ def visualize_amplitudes(
     amplitudes -= amplitudes.min()
     amplitudes = amplitudes * 255
 
-    # todo try to make this faster maybe, every frame takes
-    #  1/6th of a second to render, that's a bit much.
-    #  oh probably easy to parallelize
     for j in range(len(amplitudes)):
         write_circle(power_image, amplitudes[j], j)
     transformed = abs(np.fft.ifft2(power_image))
@@ -197,10 +203,10 @@ def main():
     mono_signal = stereo_signal.mean(axis=1)
     audio_len_seconds = len(mono_signal) / samplerate
 
-    # If the original audio has n samples, this (by default) returns
-    # an array of the shape [128, n // 128 + 2] (I think), with
+    # If the original audio has n samples, this returns
+    # an array of shape [IMG_SIZE//2, n // (IMG_SIZE//2) + 2] (I think), with
     # the ith row representing the fourier transform data of the
-    # ith segment, and each segment being a sequence of 128 samples
+    # ith segment, and each segment being a sequence of IMG_SIZE // 2 samples
     # in the original audio.
     _, _, stft = scipy.signal.stft(mono_signal, nperseg=IMG_SIZE)
 
