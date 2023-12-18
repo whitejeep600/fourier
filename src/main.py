@@ -27,7 +27,9 @@ BLUE_AXIS = 0
 GREEN_AXIS = 1
 RED_AXIS = 2
 
-# todo add image size as a constant and make it possible to properly modify
+# todo experiment with this, higher is probably prettier but
+#  ofc more expensive computationally
+IMG_SIZE = 256
 
 
 def moving_average(a: np.ndarray, length: int) -> np.ndarray:
@@ -58,6 +60,17 @@ def write_circle(
 # Of course defining this is up to our creativity.
 # todo add some other processing.
 #  Whatever makes it look cool, yo. We can experiment
+#  color ideas:
+#    wavelength. Map shorter sound wavelengths to shorter
+#      light wavelengths. Thus bass = low frequencies =
+#      high wavelengths and maps to red, then mid maps to green,
+#      then high maps to blue. That would be "discrete", could instead
+#      do it continuously, like assign continuously changing colors
+#      to circles further and further away from the center in the PSD
+#      then some kind of color changing on the result, weighted by
+#      images of the circles. Computationally expensive tho
+#    dimensions. come up with a method of a 3d ft with colors
+#      as the third dimension. Objectively coolest but maybe 太麻煩
 def visualize_amplitudes(
         amplitudes: np.ndarray,
         global_max_amplitude: float
@@ -80,8 +93,7 @@ def visualize_amplitudes(
     # frequencies are in fact further away from the center,
     # and higher grayscale values correspond to higher
     # wave amplitudes.
-    img_size = (len(amplitudes) - 1) * 2
-    power_image = np.zeros((img_size, img_size))
+    power_image = np.zeros((IMG_SIZE, IMG_SIZE))
 
     # todo might want to modify this for the best, most dynamic
     #  visual effect
@@ -95,7 +107,8 @@ def visualize_amplitudes(
     amplitudes = amplitudes * 255
 
     # todo try to make this faster maybe, every frame takes
-    #  1/6th of a second to render, that's a bit much
+    #  1/6th of a second to render, that's a bit much.
+    #  oh probably easy to parallelize
     for j in range(len(amplitudes)):
         write_circle(power_image, amplitudes[j], j)
     transformed = abs(np.fft.ifft2(power_image))
@@ -125,12 +138,11 @@ def save_amplitude_data_visualization_as_avi(
         target_path: Path,
         target_video_fps: float
 ) -> None:
-    img_size = ((amplitudes.shape[1]) - 1) * 2
     video = cv2.VideoWriter(
         str(target_path),
         cv2.VideoWriter_fourcc(*'MJPG'),
         fps=target_video_fps,
-        frameSize=(img_size, img_size),
+        frameSize=(IMG_SIZE, IMG_SIZE),
         isColor=True
     )
 
@@ -153,7 +165,7 @@ def resave_with_target_fps_and_sound(
         audio_path: Path
 ) -> None:
 
-    # again, debug
+    # again, debug only
     target_len_seconds = FRAME_CUTOFF / target_video_fps
 
     audioclip = AudioFileClip(str(audio_path)).subclip(0, target_len_seconds)
@@ -183,7 +195,7 @@ def main():
     # the ith row representing the fourier transform data of the
     # ith segment, and each segment being a sequence of 128 samples
     # in the original audio.
-    _, _, stft = scipy.signal.stft(mono_signal)
+    _, _, stft = scipy.signal.stft(mono_signal, nperseg=IMG_SIZE)
 
     # We want to process fragment by fragment so this indexing
     # is more intuitive
