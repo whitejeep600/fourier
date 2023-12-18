@@ -13,16 +13,21 @@ from tqdm import tqdm
 
 N_PROCESSES = 6
 
+# todo reduce memory (esp. RAM) usage or it won't even be rendered in full,
+#  or it will occupy an outlandish amount of memory
+
 # Todo adjust this to obtain an animation
 #  that visually corresponds to the sound (hopefully
 #  an adjustment here will be sufficient)
-# todo maybe make the moving average move faster for "faster" fragments
+#  maybe make the moving average move faster for "faster" fragments
+#  also maybe average with earlier frames only, so that there is an
+#  effect of delay
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 1024
+FRAME_CUTOFF: int | None = 2 * 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -73,10 +78,8 @@ def write_circle(
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
 # todo add some other processing.
-#  Whatever makes it look cool, yo. We can experiment
-#  color ideas:
-#    dimensions. come up with a method of a 3d ft with colors
-#      as the third dimension. Objectively coolest but maybe 太麻煩
+#  Whatever makes it look cool, yo. We can experiment.
+#  most of all, add colors
 def visualize_amplitudes(
         amplitudes: np.ndarray,
         global_max_amplitude_sum: float
@@ -131,13 +134,14 @@ def visualize_amplitudes(
     # of chaos that works nicely on the resulting patterns,
     # making them more volatile and likely to create sharp
     # changes in brightness.
-    # todo maybe add colors here? like very high values will
-    #  be cut off, but we can still reflect them in the color
     transformed -= (transformed // 256) * 256
     transformed *= brightness_scaling
+
+    transformed = transformed[:, :, None]
+    transformed = np.repeat(transformed[:, :, None], 3, axis=2)
+
     transformed = transformed.astype(np.uint8)
 
-    transformed = np.repeat(transformed[:, :, None], 3, axis=2)
     return transformed
 
 
