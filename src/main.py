@@ -13,16 +13,14 @@ from tqdm import tqdm
 
 N_PROCESSES = 6
 
-# Todo adjust this to obtain an animation
-#  that visually corresponds to the sound
-AVERAGING_WINDOW_LEN = 32
+AVERAGING_WINDOW_LEN = 64
 
 TARGET_FPS = 90
 
 # This is only for debugging, because calculating all the stuff
-# takes a lot of time. If this is not None, it determines how many
-# # video frames will be rendered.
-FRAME_CUTOFF: int | None = 1024
+# takes a lot of time and RAM. If this is not None, it determines
+# how many video frames will be rendered.
+FRAME_CUTOFF: int | None = None
 
 IMG_SIZE = 512
 
@@ -76,7 +74,8 @@ def write_circle(
 # Of course defining this is up to our creativity.
 # todo add some other processing.
 #  Whatever makes it look cool, yo. We can experiment.
-#  most of all, add colors
+#  most of all, add colors. find some sound parameter
+#  to map to the color globally? like "warmth"
 def visualize_amplitudes(
         amplitudes: np.ndarray,
         global_max_amplitude_sum: float
@@ -101,10 +100,8 @@ def visualize_amplitudes(
     # wave amplitudes.
     power_image = np.zeros((IMG_SIZE, IMG_SIZE))
 
-    # todo might want to modify this for the best, most dynamic
-    #  visual effect
     local_amplitude_sum = amplitudes.sum()
-    brightness_scaling = (local_amplitude_sum / global_max_amplitude_sum) ** (1/2)
+    brightness_scaling = float(np.log(local_amplitude_sum) / np.log(global_max_amplitude_sum)) ** 4
 
     # Processing that empirically works okay, not really
     # motivated by any kind of maths
@@ -149,9 +146,6 @@ def save_amplitude_data_visualization(
         original_audio_path: Path
 ) -> None:
 
-    # calculate how many frames should be taken based on the
-    # audio length and the target fps. Here, take a subset
-    # (linspace) of all the amplitudes
     amplitudes_selection = np.linspace(0, len(amplitudes)-1, n_frames_to_render).astype(int)
     amplitudes = amplitudes[amplitudes_selection, :]
 
