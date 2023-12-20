@@ -13,21 +13,17 @@ from tqdm import tqdm
 
 N_PROCESSES = 6
 
-# todo reduce memory (esp. RAM) usage or it won't even be rendered in full,
-#  or it will occupy an outlandish amount of memory
+# todo save memory, both ram and the size of the result
+#  reduce fps to about 80, 原來 370 is a bit much
 
 # Todo adjust this to obtain an animation
-#  that visually corresponds to the sound (hopefully
-#  an adjustment here will be sufficient)
-#  maybe make the moving average move faster for "faster" fragments
-#  also maybe average with earlier frames only, so that there is an
-#  effect of delay
+#  that visually corresponds to the sound
 AVERAGING_WINDOW_LEN = 256
 
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 2 * 1024
+FRAME_CUTOFF: int | None = 8 * 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -35,15 +31,25 @@ GREEN_AXIS = 1
 RED_AXIS = 2
 
 # todo experiment with this, higher is probably prettier but
-#  ofc more expensive computationally. At least 512 for final
-#  rendering
+#  ofc more expensive computationally. 256 or 512 for final
+#  rendering probably
 IMG_SIZE = 512
 
 
-def moving_average(a: np.ndarray, length: int) -> np.ndarray:
+# Fourier transform is sensitive to small changes in the audio,
+# but we want to obtain a smooth visualization that looks like
+# it changes continuously frame-to-frame. So we take a moving
+# average of data that will go into creating each frame. We only
+# average with the preceding frames, so that there is a visual
+# effect of delay - sudden changes in the sound create sudden
+# and instant changes in the video, are not preceded by them,
+# and afterwards their influence gradually goes down to 0.
+def moving_average_backwards(a: np.ndarray, length: int) -> np.ndarray:
     cumsums = np.cumsum(a, dtype=float, axis=0)
     cumsums[length:, :] -= cumsums[:-length, :]
-    return cumsums[length - 1:, :] / length
+    cumsums[length:, :] /= length
+    cumsums[:length, :] /= np.arange(1, length+1)[:, None]
+    return cumsums
 
 
 def get_int_distances_from_array_center(
@@ -209,11 +215,7 @@ def main():
     all_amplitudes = np.abs(stft)
     target_video_fps = len(all_amplitudes) / audio_len_seconds
 
-    # Fourier transform is sensitive to small changes in the audio,
-    # but we want to obtain a smooth visualization that looks like
-    # it changes continuously frame-to-frame. So we take a moving
-    # average.
-    all_amplitudes = moving_average(all_amplitudes, AVERAGING_WINDOW_LEN)
+    all_amplitudes = moving_average_backwards(all_amplitudes, AVERAGING_WINDOW_LEN)
 
     save_amplitude_data_visualization(
         all_amplitudes, target_mp4_path, target_video_fps, audio_path
