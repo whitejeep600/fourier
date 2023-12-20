@@ -13,30 +13,17 @@ from tqdm import tqdm
 
 N_PROCESSES = 6
 
-# todo save memory, both ram and the size of the result
-#  reduce fps to about 80, 原來 370 is a bit much
-#  oh but that also varies based on the number
-#  of 那個 sound fragments
-
 # Todo adjust this to obtain an animation
 #  that visually corresponds to the sound
-AVERAGING_WINDOW_LEN = 256
+AVERAGING_WINDOW_LEN = 32
 
 TARGET_FPS = 90
 
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 4 * 1024
+FRAME_CUTOFF: int | None = 1024
 
-# Working on BGR video data
-BLUE_AXIS = 0
-GREEN_AXIS = 1
-RED_AXIS = 2
-
-# todo experiment with this, higher is probably prettier but
-#  ofc more expensive computationally. 256 or 512 for final
-#  rendering probably
 IMG_SIZE = 512
 
 
@@ -117,7 +104,7 @@ def visualize_amplitudes(
     # todo might want to modify this for the best, most dynamic
     #  visual effect
     local_amplitude_sum = amplitudes.sum()
-    brightness_scaling = local_amplitude_sum / global_max_amplitude_sum
+    brightness_scaling = (local_amplitude_sum / global_max_amplitude_sum) ** (1/2)
 
     # Processing that empirically works okay, not really
     # motivated by any kind of maths
@@ -167,6 +154,8 @@ def save_amplitude_data_visualization(
     # (linspace) of all the amplitudes
     amplitudes_selection = np.linspace(0, len(amplitudes)-1, n_frames_to_render).astype(int)
     amplitudes = amplitudes[amplitudes_selection, :]
+
+    amplitudes = moving_average_backwards(amplitudes, AVERAGING_WINDOW_LEN)
 
     if FRAME_CUTOFF is not None:
         amplitudes = amplitudes[:FRAME_CUTOFF]
@@ -225,8 +214,6 @@ def main():
     all_amplitudes = np.abs(stft)
 
     n_frames_to_render = int(TARGET_FPS * audio_len_seconds)
-
-    all_amplitudes = moving_average_backwards(all_amplitudes, AVERAGING_WINDOW_LEN)
 
     save_amplitude_data_visualization(
         all_amplitudes, target_mp4_path, n_frames_to_render, audio_path
