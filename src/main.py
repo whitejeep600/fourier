@@ -72,10 +72,6 @@ def write_circle(
 
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
-# todo add some other processing.
-#  Whatever makes it look cool, yo. We can experiment.
-#  most of all, add colors. find some sound parameter
-#  to map to the color globally? like "warmth"
 def visualize_amplitudes(
         amplitudes: np.ndarray,
         global_max_amplitude_sum: float
@@ -131,7 +127,6 @@ def visualize_amplitudes(
     transformed -= (transformed // 256) * 256
     transformed *= brightness_scaling
 
-    transformed = transformed[:, :, None]
     transformed = np.repeat(transformed[:, :, None], 3, axis=2)
 
     transformed = transformed.astype(np.uint8)
