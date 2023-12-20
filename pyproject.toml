@@ -1,13 +1,3 @@
-[tool.black]
-line-length = 100
-target-version = ['py311']
-include = '\.py$'
-exclude = '''
-/(
-  | \.git
-)/
-'''
-
 [tool.poetry]
 name = "fourier"
 version = "0.0.0"

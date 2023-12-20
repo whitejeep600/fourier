@@ -15,15 +15,19 @@ N_PROCESSES = 6
 
 # todo save memory, both ram and the size of the result
 #  reduce fps to about 80, 原來 370 is a bit much
+#  oh but that also varies based on the number
+#  of 那個 sound fragments
 
 # Todo adjust this to obtain an animation
 #  that visually corresponds to the sound
 AVERAGING_WINDOW_LEN = 256
 
+TARGET_FPS = 90
+
 # This is only for debugging, because calculating all the stuff
 # takes a lot of time. If this is not None, it determines how many
 # # video frames will be rendered.
-FRAME_CUTOFF: int | None = 8 * 1024
+FRAME_CUTOFF: int | None = 4 * 1024
 
 # Working on BGR video data
 BLUE_AXIS = 0
@@ -154,9 +158,15 @@ def visualize_amplitudes(
 def save_amplitude_data_visualization(
         amplitudes: np.ndarray,
         target_path: Path,
-        target_video_fps: float,
+        n_frames_to_render: int,
         original_audio_path: Path
 ) -> None:
+
+    # calculate how many frames should be taken based on the
+    # audio length and the target fps. Here, take a subset
+    # (linspace) of all the amplitudes
+    amplitudes_selection = np.linspace(0, len(amplitudes)-1, n_frames_to_render).astype(int)
+    amplitudes = amplitudes[amplitudes_selection, :]
 
     if FRAME_CUTOFF is not None:
         amplitudes = amplitudes[:FRAME_CUTOFF]
@@ -178,16 +188,16 @@ def save_amplitude_data_visualization(
     ):
         amplitude_visualizations.append(amplitude_visualization)
 
-    video_clip = ImageSequenceClip(amplitude_visualizations, target_video_fps)
+    video_clip = ImageSequenceClip(amplitude_visualizations, TARGET_FPS)
 
     audio_clip = AudioFileClip(str(original_audio_path))
     if FRAME_CUTOFF is not None:
-        target_len_seconds = FRAME_CUTOFF / target_video_fps
+        target_len_seconds = FRAME_CUTOFF / TARGET_FPS
         audio_clip = audio_clip.subclip(0, target_len_seconds)
 
     composite_audio_clip = CompositeAudioClip([audio_clip])
     video_clip.audio = composite_audio_clip
-    video_clip.write_videofile(str(target_path), fps=target_video_fps)
+    video_clip.write_videofile(str(target_path), fps=TARGET_FPS)
 
 
 def main():
@@ -213,12 +223,13 @@ def main():
     # We ignore the phase information and only take the amplitude
     # information of every frequency.
     all_amplitudes = np.abs(stft)
-    target_video_fps = len(all_amplitudes) / audio_len_seconds
+
+    n_frames_to_render = int(TARGET_FPS * audio_len_seconds)
 
     all_amplitudes = moving_average_backwards(all_amplitudes, AVERAGING_WINDOW_LEN)
 
     save_amplitude_data_visualization(
-        all_amplitudes, target_mp4_path, target_video_fps, audio_path
+        all_amplitudes, target_mp4_path, n_frames_to_render, audio_path
     )
 
 
