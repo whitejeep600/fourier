@@ -33,7 +33,7 @@ IMG_SIZE = 512
 # effect of delay - sudden changes in the sound create sudden
 # and instant changes in the video, are not preceded by them,
 # and afterwards their influence gradually goes down to 0.
-def moving_average_backwards(a: np.ndarray, length: int) -> np.ndarray:
+def _moving_average_backwards(a: np.ndarray, length: int) -> np.ndarray:
     cumsums = np.cumsum(a, dtype=float, axis=0)
     cumsums[length:, :] -= cumsums[:-length, :]
     cumsums[length:, :] /= length
@@ -41,7 +41,7 @@ def moving_average_backwards(a: np.ndarray, length: int) -> np.ndarray:
     return cumsums
 
 
-def get_int_distances_from_array_center(
+def _get_int_distances_from_array_center(
         array_size: int
 ) -> np.ndarray:
     center = array_size // 2
@@ -52,7 +52,7 @@ def get_int_distances_from_array_center(
     return total_distance
 
 
-DISTANCES_FROM_IMG_CENTER = get_int_distances_from_array_center(IMG_SIZE)
+DISTANCES_FROM_IMG_CENTER = _get_int_distances_from_array_center(IMG_SIZE)
 
 DISTANCE_MASKS = [
     DISTANCES_FROM_IMG_CENTER == radius
@@ -62,7 +62,7 @@ DISTANCE_MASKS = [
 
 # Writes a constant value in an array, approximately on a circle
 # with the same center as the array, and a given radius.
-def write_circle(
+def _write_circle(
         a: np.ndarray,
         value: float,
         radius: int
@@ -72,7 +72,7 @@ def write_circle(
 
 # Return an uint8 array representing BGR data of the visualization.
 # Of course defining this is up to our creativity.
-def visualize_amplitudes(
+def _visualize_amplitudes(
         amplitudes: np.ndarray,
         global_max_amplitude_sum: float
 ) -> np.ndarray:
@@ -110,7 +110,7 @@ def visualize_amplitudes(
     assert (len(amplitudes) - 1) * 2 == IMG_SIZE
 
     for j in range(len(amplitudes)):
-        write_circle(power_image, amplitudes[j], j)
+        _write_circle(power_image, amplitudes[j], j)
     transformed = abs(np.fft.ifft2(power_image))
 
     # Again, empirically works to produce cool images
@@ -134,7 +134,7 @@ def visualize_amplitudes(
     return transformed
 
 
-def save_amplitude_data_visualization(
+def _save_amplitude_data_visualization(
         amplitudes: np.ndarray,
         target_path: Path,
         n_frames_to_render: int,
@@ -144,7 +144,7 @@ def save_amplitude_data_visualization(
     amplitudes_selection = np.linspace(0, len(amplitudes)-1, n_frames_to_render).astype(int)
     amplitudes = amplitudes[amplitudes_selection, :]
 
-    amplitudes = moving_average_backwards(amplitudes, AVERAGING_WINDOW_LEN)
+    amplitudes = _moving_average_backwards(amplitudes, AVERAGING_WINDOW_LEN)
 
     if FRAME_CUTOFF is not None:
         amplitudes = amplitudes[:FRAME_CUTOFF]
@@ -152,7 +152,7 @@ def save_amplitude_data_visualization(
     max_sum_amplitude = max([frame_amplitudes.sum() for frame_amplitudes in amplitudes])
 
     visualize_amplitudes_partial = partial(
-        visualize_amplitudes,
+        _visualize_amplitudes,
         global_max_amplitude_sum=max_sum_amplitude
     )
 
@@ -178,9 +178,10 @@ def save_amplitude_data_visualization(
     video_clip.write_videofile(str(target_path), fps=TARGET_FPS)
 
 
-def main():
-    audio_path = Path("data/audio/source.wav")
-    target_mp4_path = Path("data/video/final.mp4")
+def main(
+        audio_path: Path,
+        target_mp4_path: Path
+) -> None:
     target_mp4_path.parent.mkdir(parents=True, exist_ok=True)
 
     samplerate, stereo_signal = wavfile.read(audio_path)
@@ -204,10 +205,15 @@ def main():
 
     n_frames_to_render = int(TARGET_FPS * audio_len_seconds)
 
-    save_amplitude_data_visualization(
+    _save_amplitude_data_visualization(
         all_amplitudes, target_mp4_path, n_frames_to_render, audio_path
     )
 
 
 if __name__ == '__main__':
-    main()
+    audio_path = Path("data/audio/source.wav")
+    target_mp4_path = Path("data/video/final.mp4")
+    main(
+        audio_path,
+        target_mp4_path
+    )
